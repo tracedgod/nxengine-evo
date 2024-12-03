@@ -3,6 +3,7 @@
 /bin
 /extern
 /tools
+/.vscode
 
 *.AppImage
 *.flatpak
