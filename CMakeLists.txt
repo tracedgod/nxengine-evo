@@ -6,38 +6,24 @@ set(PLATFORM "pc" CACHE STRING "Platform to build for")
 set_property(CACHE PLATFORM PROPERTY STRINGS pc vita switch)
 
 set(UNIX_LIKE OFF)
-IF(UNIX AND NOT APPLE AND NOT ANDROID)
+if(UNIX AND NOT APPLE AND NOT ANDROID)
     set(UNIX_LIKE ON)
 
     set(PORTABLE "AUTO" CACHE STRING "Build location-independent binary?")
     set_property(CACHE PORTABLE PROPERTY STRINGS ON OFF AUTO)
-ELSE()
+else()
     set(PORTABLE "AUTO" CACHE INTERNAL "Build location-independent binary? (Linux/BSD only)")
-ENDIF()
+endif()
 
-IF(PLATFORM STREQUAL "pc")
-ELSEIF(PLATFORM STREQUAL "vita")
-    IF(DEFINED ENV{VITASDK})
-        include("$ENV{VITASDK}/share/vita.toolchain.cmake" REQUIRED)
-        include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
-        set(VITA_APP_NAME "NXENGINE-EVO")
-        set(VITA_TITLEID  "NXEV00001")
-        set(VITA_VERSION  "01.00")
-        set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d PARENTAL_LEVEL=1")
-    ELSE()
-        message(FATAL_ERROR "Please define VITASDK to point to your SDK path!")
-    ENDIF()
-ELSEIF(PLATFORM STREQUAL "switch")
-    IF(DEFINED ENV{DEVKITPRO})
-        include("cmake/switch.toolchain.cmake" REQUIRED)
-        include("cmake/switch.tools.cmake" REQUIRED)
-    ELSE()
-        message(FATAL_ERROR "Please define DEVKITPRO to point to your SDK path!")
-    ENDIF()
+if(PLATFORM STREQUAL "pc")
 
-ELSE()
-    message(FATAL_ERROR "Wrong platform")
-ENDIF()
+elseif(PLATFORM STREQUAL "vita")
+    include("cmake/PlatformVita.cmake")
+elseif(PLATFORM STREQUAL "switch")
+    include("cmake/PlatformSwitch.cmake")
+else()
+    message(FATAL_ERROR "Unsupported platform: ${PLATFORM}")
+endif()
 
 project(nx CXX)
 
@@ -46,24 +32,17 @@ set (nx_VERSION_MINOR 6)
 set (nx_VERSION_RELEASE 5)
 set (nx_APP_ID org.nxengine.nxengine_evo)
 
-include(CheckCXXCompilerFlag)
-include(GNUInstallDirs)
+if(PLATFORM STREQUAL "vita")
+    find_package(SDL2 CONFIG REQUIRED)
+else()
+    find_package(SDL2 REQUIRED)
+endif()
 
-IF(PLATFORM STREQUAL "vita")
-find_package(SDL2 CONFIG REQUIRED)
-ELSE()
-find_package(SDL2 REQUIRED)
-ENDIF()
 find_package(SDL2_mixer REQUIRED)
 find_package(SDL2_image REQUIRED)
+find_package(ZLIB REQUIRED)
 find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
-
-include_directories(${SDL2_INCLUDE_DIR})
-include_directories(${SDL2_MIXER_INCLUDE_DIR})
-include_directories(${SDL2_IMAGE_INCLUDE_DIR})
-include_directories(${PNG_PNG_INCLUDE_DIR})
-include_directories("${nx_SOURCE_DIR}/deps")
 
 file(GLOB APP_SOURCES "src/[a-zA-Z]*.cpp")
 file(GLOB TB_SOURCES "src/TextBox/[a-zA-Z]*.cpp")
@@ -86,8 +65,6 @@ set(EXTR_SOURCES
     "src/stagedata.cpp"
 )
 
-include_directories(${nx_SOURCE_DIR})
-
 set(SOURCES
     ${APP_SOURCES}
     ${TB_SOURCES}
@@ -104,111 +81,63 @@ set(SOURCES
     ${UT_SOURCES}
 )
 
-IF(CMAKE_BUILD_TYPE MATCHES Debug)
-    message("debug mode")
-    add_definitions(-DTRACE_SCRIPT)
-    add_definitions(-DDEBUG)
-ENDIF()
-
-add_definitions("-Wall")
-
 add_executable(nx ${SOURCES})
 
-IF(PLATFORM STREQUAL "pc")
-    set_property(TARGET nx PROPERTY OUTPUT_NAME nxengine-evo)
-    add_definitions("-std=c++11")
-    IF(UNIX_LIKE)
-        add_definitions(-DHAVE_UNIX_LIKE)
+target_include_directories(nx PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/deps
+)
 
-        # Use non-portable install, with hard-coded data directory path,
-        # if requested by user or if the assets are not at path “../share/…”
-        # relative to the main binary and user didn't force a portable install
-        string(TOUPPER "${PORTABLE}" _PORTABLE)
-        IF((_PORTABLE STREQUAL "AUTO" AND NOT CMAKE_INSTALL_DATAROOTDIR STREQUAL "share") OR NOT ${_PORTABLE})
-            add_definitions(-DDATADIR="${CMAKE_INSTALL_FULL_DATADIR}/nxengine/data/")
-        ELSE()
-            IF(_PORTABLE STREQUAL "ON")
-                add_definitions(-DPORTABLE)
-            ENDIF()
-        ENDIF()
-    ENDIF()
-    target_link_libraries(nx ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${SDL2_IMAGE_LIBRARY} ${PNG_LIBRARY} ${JPEG_LIBRARY})
+target_compile_definitions(nx PRIVATE
+    $<$<STREQUAL:${PLATFORM},pc>:-std=c++11>
+    $<$<STREQUAL:${PLATFORM},vita>:-std=gnu++11 -march=armv7-a+simd -D__VITA__>
+    $<$<STREQUAL:${PLATFORM},switch>:-std=gnu++11 -D__SWITCH__>
+)
 
-ELSEIF(PLATFORM STREQUAL "vita")
-    add_definitions("-std=gnu++11")
-    add_definitions("-march=armv7-a+simd")
-    add_definitions("-D__VITA__")
-    target_link_libraries(nx ${SDL2_MIXER_LIBRARY} ${SDL2_IMAGE_LIBRARY} SDL2::SDL2-static ${PNG_LIBRARY} ${JPEG_LIBRARY}
-      xmp
-      modplug
-      opusfile
-      opus
-      webp
-      pthread
-      z
-      FLAC
-      vorbisfile
-      vorbis
-      ogg
-      mikmod
-      mpg123
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+    message(DEBUG "Debug Mode Enabled")
+    target_compile_definitions(nx PRIVATE 
+        TRACE_SCRIPT 
+        DEBUG
     )
+endif()
 
-  vita_create_self(${PROJECT_NAME}.self nx UNSAFE)
-  vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
-    VERSION ${VITA_VERSION}
-    NAME ${VITA_APP_NAME}
-    FILE platform/vita/sce_sys sce_sys
-    FILE release/data data
-  )
-  add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/release/NXEngine-Evo-${nx_VERSION_MAJOR}.${nx_VERSION_MINOR}.${nx_VERSION_RELEASE}.vpk
-    COMMAND cp nx.vpk ${CMAKE_SOURCE_DIR}/release/NXEngine-Evo-${nx_VERSION_MAJOR}.${nx_VERSION_MINOR}.${nx_VERSION_RELEASE}.vpk
-    DEPENDS nx.vpk
-    COMMENT "Moving vpk to release"
-  )
-  add_custom_target(nxbinvpk_ ALL DEPENDS ${CMAKE_SOURCE_DIR}/release/NXEngine-Evo-${nx_VERSION_MAJOR}.${nx_VERSION_MINOR}.${nx_VERSION_RELEASE}.vpk)
+if(PLATFORM STREQUAL "pc")
+    if(UNIX_LIKE)
+        target_compile_definitions(nx PRIVATE HAVE_UNIX_LIKE)
+        if((PORTABLE STREQUAL "AUTO" AND NOT CMAKE_INSTALL_DATAROOTDIR STREQUAL "share") OR NOT PORTABLE)
+            target_compile_definitions(nx PRIVATE DATADIR="${CMAKE_INSTALL_FULL_DATADIR}/nxengine/data")
+        elseif(PORTABLE STREQUAL "ON")
+            target_compile_definitions(nx PRIVATE PORTABLE)
+        endif()
+    endif()
+endif()
+    
+target_compile_options(nx PRIVATE -Wall)
+    
+    target_link_libraries(nx PRIVATE
+        $<$<STREQUAL:${PLATFORM},vita>:SDL2::SDL2-static>
+        $<$<STREQUAL:${PLATFORM},NOT vita>:SDL2::SDL2>
+        SDL2_mixer::SDL2_mixer
+        SDL2_image::SDL2_image
+        PNG::PNG
+        JPEG::JPEG
+        $<$<STREQUAL:${PLATFORM},vita>:xmp modplug opusfile opus webp pthread z FLAC vorbisfile vorbis ogg mikmod mpg123>
+        $<$<STREQUAL:${PLATFORM},switch>:m z FLAC vorbisidec ogg mikmod mpg123 modplug EGL glapi drm_nouveau -lnx opusfile opus>
+    )   
 
-ELSEIF(PLATFORM STREQUAL "switch")
-    add_definitions("-std=gnu++11")
-    add_definitions("-D__SWITCH__")
-    target_link_libraries(nx SDL2_mixer SDL2_image SDL2 png jpeg webp
-      m
-      z
-      FLAC
-      vorbisidec
-      ogg
-      mikmod
-      mpg123
-      modplug
-      EGL
-      glapi
-      drm_nouveau
-      -lnx
-      opusfile
-      opus
-    )
-
-    add_nro_target(nx "NXEngine-evo" "NXEngine team" "${nx_VERSION_MAJOR}.${nx_VERSION_MINOR}.${nx_VERSION_RELEASE}" "${CMAKE_SOURCE_DIR}/platform/switch/icon.jpg" "${CMAKE_SOURCE_DIR}/release")
-    add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/release/NXEngine-Evo-${nx_VERSION_MAJOR}.${nx_VERSION_MINOR}.${nx_VERSION_RELEASE}.nro
-      COMMAND cp nx.nro ${CMAKE_SOURCE_DIR}/release/NXEngine-Evo-${nx_VERSION_MAJOR}.${nx_VERSION_MINOR}.${nx_VERSION_RELEASE}.nro
-      DEPENDS nx.nro
-      COMMENT "Moving nro to release"
-    )
-    add_custom_target(nxbinnro_ ALL DEPENDS ${CMAKE_SOURCE_DIR}/release/NXEngine-Evo-${nx_VERSION_MAJOR}.${nx_VERSION_MINOR}.${nx_VERSION_RELEASE}.nro)
-ENDIF()
-
-IF(PLATFORM STREQUAL "pc")
+if(PLATFORM STREQUAL "pc")
     add_executable(extract ${EXTR_SOURCES})
-    target_link_libraries(extract ${SDL2_LIBRARY})
+    target_link_libraries(extract SDL2::SDL2)
     set_property(TARGET extract PROPERTY OUTPUT_NAME nxextract)
 
     install(TARGETS nx extract RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(DIRECTORY data DESTINATION ${CMAKE_INSTALL_DATADIR}/nxengine)
 
     # Install XDG metadata on Desktop Linux like platforms
-    IF(UNIX_LIKE)
+    if(UNIX_LIKE)
         install(FILES platform/xdg/${nx_APP_ID}.desktop     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
         install(FILES platform/xdg/${nx_APP_ID}.png         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps)
         install(FILES platform/xdg/${nx_APP_ID}.appdata.xml DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo)
-    ENDIF()
-ENDIF()
+    endif()
+endif()
