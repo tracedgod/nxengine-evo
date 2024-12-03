@@ -16,11 +16,10 @@ else()
 endif()
 
 if(PLATFORM STREQUAL "pc")
-    # Placeholder for PC Platform
 elseif(PLATFORM STREQUAL "vita")
-    include("cmake/PlatformVita.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/PlatformVita.cmake")
 elseif(PLATFORM STREQUAL "switch")
-    include("cmake/PlatformSwitch.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/PlatformSwitch.cmake")
 else()
     message(FATAL_ERROR "Unsupported platform: ${PLATFORM}")
 endif()
@@ -94,28 +93,28 @@ target_compile_definitions(nx PRIVATE
     $<$<STREQUAL:${PLATFORM},switch>:-std=gnu++11 -D__SWITCH__>
 )
 
-# MSVC Freaks out without defining UNICODE compile defs
-if(MSVC)
-    target_compile_definitions(nx PUBLIC UNICODE _UNICODE)
-endif()
-
 if(CMAKE_BUILD_TYPE MATCHES Debug)
     message(DEBUG "Debug Mode Enabled")
     target_compile_definitions(nx PRIVATE 
-        TRACE_SCRIPT 
+        TRACE_SCRIPT
         DEBUG
     )
     target_compile_options(nx PUBLIC -Wall)
 endif()
 
 if(PLATFORM STREQUAL "pc")
-    if(UNIX_LIKE)
+    if(WIN32)
+        if(MSVC)
+            # MSVC Freaks out without defining UNICODE compile definitions
+            target_compile_definitions(nx PUBLIC UNICODE _UNICODE)
+        endif()
+    elseif(UNIX_LIKE)
         target_compile_definitions(nx PRIVATE HAVE_UNIX_LIKE)
         string(TOUPPER "${PORTABLE}" _PORTABLE)
         if((_PORTABLE STREQUAL "AUTO" AND NOT CMAKE_INSTALL_DATAROOTDIR STREQUAL "share") OR NOT _PORTABLE)
             target_compile_definitions(nx PRIVATE DATADIR="${CMAKE_INSTALL_FULL_DATADIR}/nxengine/data")
         elseif(_PORTABLE STREQUAL "ON")
-            target_compile_definitions(nx PRIVATE "PORTABLE")
+            target_compile_definitions(nx PRIVATE PORTABLE)
         endif()
     endif()
 endif()
