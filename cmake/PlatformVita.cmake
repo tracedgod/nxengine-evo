@@ -7,7 +7,7 @@ include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
 
 set(VITA_APP_NAME       "NXENGINE-EVO")
 set(VITA_TITLEID        "NXEV00001")
-set(VITA_VERSION        "01.00")
+set(VITA_VERSION        "0${nx_VERSION_MAJOR}.${nx_VERSION_MINOR}${nx_VERSION_RELEASE}")
 set(VITA_MKSFOEX_FLAGS  "${VITA_MKSFOEX_FLAGS} -d PARENTAL_LEVEL=1")
 
 vita_create_self(${PROJECT_NAME}.self nx UNSAFE)

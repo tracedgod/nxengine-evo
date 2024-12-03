@@ -16,7 +16,7 @@ else()
 endif()
 
 if(PLATFORM STREQUAL "pc")
-
+    # Placeholder for PC Platform
 elseif(PLATFORM STREQUAL "vita")
     include("cmake/PlatformVita.cmake")
 elseif(PLATFORM STREQUAL "switch")
@@ -94,30 +94,35 @@ target_compile_definitions(nx PRIVATE
     $<$<STREQUAL:${PLATFORM},switch>:-std=gnu++11 -D__SWITCH__>
 )
 
+# MSVC Freaks out without defining UNICODE compile defs
+if(MSVC)
+    target_compile_definitions(nx PUBLIC UNICODE _UNICODE)
+endif()
+
 if(CMAKE_BUILD_TYPE MATCHES Debug)
     message(DEBUG "Debug Mode Enabled")
     target_compile_definitions(nx PRIVATE 
         TRACE_SCRIPT 
         DEBUG
     )
+    target_compile_options(nx PUBLIC -Wall)
 endif()
 
 if(PLATFORM STREQUAL "pc")
     if(UNIX_LIKE)
         target_compile_definitions(nx PRIVATE HAVE_UNIX_LIKE)
-        if((PORTABLE STREQUAL "AUTO" AND NOT CMAKE_INSTALL_DATAROOTDIR STREQUAL "share") OR NOT PORTABLE)
+        string(TOUPPER "${PORTABLE}" _PORTABLE)
+        if((_PORTABLE STREQUAL "AUTO" AND NOT CMAKE_INSTALL_DATAROOTDIR STREQUAL "share") OR NOT _PORTABLE)
             target_compile_definitions(nx PRIVATE DATADIR="${CMAKE_INSTALL_FULL_DATADIR}/nxengine/data")
-        elseif(PORTABLE STREQUAL "ON")
-            target_compile_definitions(nx PRIVATE PORTABLE)
+        elseif(_PORTABLE STREQUAL "ON")
+            target_compile_definitions(nx PRIVATE "PORTABLE")
         endif()
     endif()
 endif()
     
-target_compile_options(nx PRIVATE -Wall)
-    
     target_link_libraries(nx PRIVATE
         $<$<STREQUAL:${PLATFORM},vita>:SDL2::SDL2-static>
-        $<$<STREQUAL:${PLATFORM},NOT vita>:SDL2::SDL2>
+        $<$<NOT:$<STREQUAL:${PLATFORM},vita>>:SDL2::SDL2 SDL2::SDL2main>
         SDL2_mixer::SDL2_mixer
         SDL2_image::SDL2_image
         PNG::PNG
@@ -128,6 +133,10 @@ target_compile_options(nx PRIVATE -Wall)
 
 if(PLATFORM STREQUAL "pc")
     add_executable(extract ${EXTR_SOURCES})
+    target_include_directories(extract PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/deps
+    )
     target_link_libraries(extract SDL2::SDL2)
     set_property(TARGET extract PROPERTY OUTPUT_NAME nxextract)
 
