@@ -29,6 +29,7 @@ project(nx CXX)
 set (nx_VERSION_MAJOR 2)
 set (nx_VERSION_MINOR 6)
 set (nx_VERSION_RELEASE 5)
+set (nx_PRODUCT_NAME "NXEngine-evo")
 set (nx_APP_ID org.nxengine.nxengine_evo)
 
 if(PLATFORM STREQUAL "vita")
@@ -80,7 +81,20 @@ set(SOURCES
     ${UT_SOURCES}
 )
 
+if(WIN32)
+    set(ICON_PATH "${CMAKE_SOURCE_DIR}/platform/win32/nx64x64.ico")
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/platform/win32/nx.rc.in
+        ${CMAKE_BINARY_DIR}/nx.rc
+        @ONLY
+    )
+endif()
+
 add_executable(nx ${SOURCES})
+
+if(WIN32)
+    target_sources(nx PRIVATE ${CMAKE_BINARY_DIR}/nx.rc)
+endif()
 
 target_include_directories(nx PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -108,6 +122,7 @@ if(PLATFORM STREQUAL "pc")
             # MSVC Freaks out without defining UNICODE compile definitions
             target_compile_definitions(nx PUBLIC UNICODE _UNICODE)
         endif()
+
     elseif(UNIX_LIKE)
         target_compile_definitions(nx PRIVATE HAVE_UNIX_LIKE)
         string(TOUPPER "${PORTABLE}" _PORTABLE)
